@@ -16,10 +16,15 @@ const TOOLBAR_OPTIONS = [
 ];
 
 const TextEditor = () => {
+  const [socket, setSocket] = useState(null);
+  const [quill, setQuill] = useState(null);
+
   useEffect(() => {
-    const socket = io("http://localhost:3001");
+    const socketInstance = io("http://localhost:3001");
+    setSocket(socketInstance);
+
     return () => {
-      socket.disconnect();
+      socketInstance.disconnect();
     };
   }, []);
 
@@ -28,11 +33,42 @@ const TextEditor = () => {
     wrapper.innerHTML = "";
     const editor = document.createElement("div");
     wrapper.append(editor);
-    new Quill(editor, {
+    const quillInstance = new Quill(editor, {
       theme: "snow",
       modules: { toolbar: TOOLBAR_OPTIONS },
     });
+    setQuill(quillInstance);
   }, []);
+
+  useEffect(() => {
+    if (!quill || !socket) return;
+
+    const textChangeHandler = (delta, oldDelta, source) => {
+      if (source !== "user") return;
+      socket.emit("send-changes", delta);
+    };
+
+    quill.on("text-change", textChangeHandler);
+
+    return () => {
+      quill.off("text-change", textChangeHandler);
+    };
+  }, [quill, socket]);
+
+  useEffect(() => {
+    if (!quill || !socket) return;
+
+    const receiveChangesHandler = (delta) => {
+      quill.updateContents(delta);
+    };
+
+    socket.on("receive-changes", receiveChangesHandler);
+
+    return () => {
+      socket.off("receive-changes", receiveChangesHandler);
+    };
+  }, [quill, socket]);
+
   return <div className="container" ref={wrapperRef}></div>;
 };
 
