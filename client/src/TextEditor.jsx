@@ -24,11 +24,42 @@ const TextEditor = () => {
   useEffect(() => {
     const socketInstance = io("http://localhost:3001");
     setSocket(socketInstance);
-
-    return () => {
-      socketInstance.disconnect();
-    };
+    return () => socketInstance.disconnect();
   }, []);
+
+  useEffect(() => {
+    if (!quill || !socket) return;
+    const textChangeHandler = (delta, oldDelta, source) => {
+      if (source !== "user") return;
+      socket.emit("send-changes", delta);
+    };
+    quill.on("text-change", textChangeHandler);
+    return () => quill.off("text-change", textChangeHandler);
+  }, [quill, socket]);
+
+  useEffect(() => {
+    if (socket == null || quill == null) return;
+    const interval = setInterval(() => {
+      socket.emit("save-document", quill.getContents());
+    }, 2000);
+    return () => clearInterval(interval);
+  }, [socket, quill]);
+
+  useEffect(() => {
+    if (socket == null || quill == null) return;
+    socket.once("load-document", (document) => {
+      quill.setContents(document);
+      quill.enable();
+    });
+    socket.emit("get-document", documentId);
+  }, [socket, quill, documentId]);
+
+  useEffect(() => {
+    if (!quill || !socket) return;
+    const receiveChangesHandler = (delta) => quill.updateContents(delta);
+    socket.on("receive-changes", receiveChangesHandler);
+    return () => socket.off("receive-changes", receiveChangesHandler);
+  }, [quill, socket]);
 
   const wrapperRef = useCallback((wrapper) => {
     if (wrapper == null) return;
@@ -43,46 +74,6 @@ const TextEditor = () => {
     quillInstance.setText("Loading...");
     setQuill(quillInstance);
   }, []);
-
-  useEffect(() => {
-    if (!quill || !socket) return;
-
-    const textChangeHandler = (delta, oldDelta, source) => {
-      if (source !== "user") return;
-      socket.emit("send-changes", delta);
-    };
-
-    quill.on("text-change", textChangeHandler);
-
-    return () => {
-      quill.off("text-change", textChangeHandler);
-    };
-  }, [quill, socket]);
-
-  useEffect(() => {
-    if (socket == null || quill == null) return;
-
-    socket.once("load-document", (document) => {
-      quill.setContents(document);
-      quill.enable();
-    });
-
-    socket.emit("get-document", documentId);
-  }, [socket, quill, documentId]);
-
-  useEffect(() => {
-    if (!quill || !socket) return;
-
-    const receiveChangesHandler = (delta) => {
-      quill.updateContents(delta);
-    };
-
-    socket.on("receive-changes", receiveChangesHandler);
-
-    return () => {
-      socket.off("receive-changes", receiveChangesHandler);
-    };
-  }, [quill, socket]);
 
   return <div className="container" ref={wrapperRef}></div>;
 };
